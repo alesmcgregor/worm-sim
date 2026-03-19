@@ -776,3 +776,150 @@ BRAIN.motorcontrol = function () {
 		}
 	}
 };
+
+/**
+ * Creates an isolated brain instance so each worm can have its own neuron state.
+ * The connectome weights are shared, but neuron activations and stimulation flags
+ * are independent per instance.
+ */
+BRAIN.createInstance = function () {
+	var brain = {
+		weights: BRAIN.weights,
+		fireThreshold: BRAIN.fireThreshold,
+		muscles: BRAIN.muscles.slice(),
+		muscleList: BRAIN.muscleList.slice(),
+		mLeft: BRAIN.mLeft.slice(),
+		mRight: BRAIN.mRight.slice(),
+		thisState: 0,
+		nextState: 1,
+		accumleft: 0,
+		accumright: 0,
+		stimulateHungerNeurons: true,
+		stimulateNoseTouchNeurons: false,
+		stimulateFoodSenseNeurons: false,
+		stimulateVisionNeurons: false,
+		stimulateThreatNeurons: false,
+		connectome: BRAIN.connectome,
+		postSynaptic: {},
+	};
+
+	for (var ps in BRAIN.postSynaptic) {
+		brain.postSynaptic[ps] = [0, 0];
+	}
+
+	brain.dendriteAccumulate = function (preSynaptic) {
+		for (var postSynaptic in this.weights[preSynaptic]) {
+			this.postSynaptic[postSynaptic][this.nextState] +=
+				this.weights[preSynaptic][postSynaptic];
+		}
+	};
+
+	brain.fireNeuron = function (fneuron) {
+		if (fneuron !== 'MVULVA') {
+			this.dendriteAccumulate(fneuron);
+			this.postSynaptic[fneuron][this.nextState] = 0;
+		}
+	};
+
+	brain.motorcontrol = function () {
+		this.accumleft = 0;
+		this.accumright = 0;
+
+		for (var m = 0; m < this.muscleList.length; m++) {
+			var muscleName = this.muscleList[m];
+
+			if (this.mLeft.indexOf(muscleName) !== -1) {
+				this.accumleft += this.postSynaptic[muscleName][this.nextState];
+				this.postSynaptic[muscleName][this.nextState] = 0;
+			} else if (this.mRight.indexOf(muscleName) !== -1) {
+				this.accumright += this.postSynaptic[muscleName][this.nextState];
+				this.postSynaptic[muscleName][this.nextState] = 0;
+			}
+		}
+	};
+
+	brain.runconnectome = function () {
+		for (var neuron in this.postSynaptic) {
+			if (
+				this.muscles.indexOf(neuron.substring(0, 3)) === -1 &&
+				this.postSynaptic[neuron][this.thisState] > this.fireThreshold
+			) {
+				this.fireNeuron(neuron);
+			}
+		}
+
+		this.motorcontrol();
+
+		for (var ps in this.postSynaptic) {
+			this.postSynaptic[ps][this.thisState] =
+				this.postSynaptic[ps][this.nextState];
+		}
+
+		var temp = this.thisState;
+		this.thisState = this.nextState;
+		this.nextState = temp;
+	};
+
+	brain.update = function () {
+		if (this.stimulateHungerNeurons) {
+			this.dendriteAccumulate('RIML');
+			this.dendriteAccumulate('RIMR');
+			this.dendriteAccumulate('RICL');
+			this.dendriteAccumulate('RICR');
+			this.runconnectome();
+		}
+		if (this.stimulateNoseTouchNeurons) {
+			this.dendriteAccumulate('FLPR');
+			this.dendriteAccumulate('FLPL');
+			this.dendriteAccumulate('ASHL');
+			this.dendriteAccumulate('ASHR');
+			this.dendriteAccumulate('IL1VL');
+			this.dendriteAccumulate('IL1VR');
+			this.dendriteAccumulate('OLQDL');
+			this.dendriteAccumulate('OLQDR');
+			this.dendriteAccumulate('OLQVR');
+			this.dendriteAccumulate('OLQVL');
+			this.runconnectome();
+		}
+		if (this.stimulateFoodSenseNeurons) {
+			this.dendriteAccumulate('ADFL');
+			this.dendriteAccumulate('ADFR');
+			this.dendriteAccumulate('ASGR');
+			this.dendriteAccumulate('ASGL');
+			this.dendriteAccumulate('ASIL');
+			this.dendriteAccumulate('ASIR');
+			this.dendriteAccumulate('ASJR');
+			this.dendriteAccumulate('ASJL');
+			this.runconnectome();
+		}
+		if (this.stimulateVisionNeurons) {
+			// Eye stimulus routed into known amphid/visual-like pathways
+			this.dendriteAccumulate('AWAL');
+			this.dendriteAccumulate('AWAR');
+			this.dendriteAccumulate('ADLL');
+			this.dendriteAccumulate('ADLR');
+			this.runconnectome();
+		}
+		if (this.stimulateThreatNeurons) {
+			// Threat signal goes through nociceptor-like channels
+			this.dendriteAccumulate('ASHL');
+			this.dendriteAccumulate('ASHR');
+			this.dendriteAccumulate('ADAL');
+			this.dendriteAccumulate('ADAR');
+			this.runconnectome();
+		}
+	};
+
+	brain.randExcite = function () {
+		var neuronNames = Object.keys(this.connectome);
+		for (var i = 0; i < 40; i++) {
+			this.dendriteAccumulate(
+				neuronNames[Math.floor(Math.random() * neuronNames.length)],
+			);
+		}
+	};
+
+	brain.randExcite();
+
+	return brain;
+};
